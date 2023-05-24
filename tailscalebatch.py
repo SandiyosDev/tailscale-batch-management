@@ -29,18 +29,33 @@ class TailscaleManager:
         self.search_entry.pack(fill=X, padx=10, pady=(5, 0))
         self.search_entry.bind('<KeyRelease>', self.update_device_list)
 
-        self.device_list = Listbox(self.master, selectmode=MULTIPLE)
+        self.scrollbar = Scrollbar(self.master)
+        self.scrollbar.pack(side=RIGHT, fill=Y)
+
+        self.device_list = Listbox(self.master, selectmode=MULTIPLE, yscrollcommand=self.scrollbar.set)
         self.device_list.pack(fill=BOTH, expand=True, padx=10, pady=(5, 0))
+        self.scrollbar.config(command=self.device_list.yview)
+
+        self.show_responses_button = Button(self.master, text="Show API Responses", command=self.show_api_responses)
+        self.show_responses_button.pack(pady=(5, 0))
 
         self.select_all_button = Button(self.master, text="Select All Visible Devices", command=self.select_all)
         self.select_all_button.pack(pady=(5, 0))
 
         self.tag_entry = Entry(self.master)
-        self.tag_entry.insert(0, "Enter tags (comma-separated)")  # Placeholder text for tags
+        self.tag_entry.insert(0, "work-device, test-devices, blah-tag")  # Placeholder with example tags
         self.tag_entry.pack(fill=X, padx=10, pady=(5, 0))
 
         self.apply_tags_button = Button(self.master, text="Apply Tags", command=self.apply_tags)
         self.apply_tags_button.pack(pady=(5, 10))
+
+
+    def show_api_responses(self):
+        new_window = Toplevel(self.master)
+        new_window.title("API Responses")
+        text = Text(new_window)
+        text.insert(END, json.dumps(self.devices, indent=4))  # Pretty print the devices
+        text.pack(fill=BOTH, expand=True)
 
     def login(self):
         self.api_key = self.api_key_entry.get()
@@ -76,7 +91,7 @@ class TailscaleManager:
                 auth=(self.api_key, "")
             )
             if response.status_code != 200:
-                messagebox.showerror("Error", f"Failed to update tags for device {device['hostname']}")
+                messagebox.showerror("Error", f"Failed to update tags for device {device['name']}")
 
 root = Tk()
 app = TailscaleManager(root)
