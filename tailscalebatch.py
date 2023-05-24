@@ -1,4 +1,5 @@
 import requests
+import json
 from tkinter import *
 from tkinter import messagebox
 
@@ -52,9 +53,9 @@ class TailscaleManager:
             f"https://api.tailscale.com/api/v2/tailnet/{self.tailnet}/devices",
             auth=(self.api_key, "")
         )
-        print(response.content)
-        self.devices = response.json()
-        print(self.devices)
+        data = response.json()
+        self.devices = data["devices"] if "devices" in data else []  # Extract the "devices" list
+        print(self.devices)  # Added this line to print the devicws
         search_term = self.search_entry.get().lower()
         self.device_list.delete(0, END)
         for device in self.devices:
