@@ -47,4 +47,4 @@ Note: You can resize the window according to your preference.
 
 ## License
 
-This script is released under the [MIT License](LICENSE).
+This script is released under the [GNU General Public License v3.0](LICENSE).
