@@ -45,23 +45,20 @@ class TailscaleManager:
     def login(self):
         self.api_key = self.api_key_entry.get()
         self.tailnet = self.tailnet_entry.get()
-        self.update_device_list()
-
-    def update_device_list(self, event=None):
-        # Fetch the list of devices using the API key and tailnet name
         response = requests.get(
             f"https://api.tailscale.com/api/v2/tailnet/{self.tailnet}/devices",
             auth=(self.api_key, "")
         )
         data = response.json()
         self.devices = data["devices"] if "devices" in data else []  # Extract the "devices" list
-        print(self.devices)  # Added this line to print the devicws
+        self.update_device_list()
+
+    def update_device_list(self, event=None):
         search_term = self.search_entry.get().lower()
         self.device_list.delete(0, END)
         for device in self.devices:
-            print(device)  # Add this line to print the device
-            if search_term in device["hostname"].lower():
-                self.device_list.insert(END, device["hostname"])
+            if search_term in device["name"].lower() or search_term == "search devices":
+                self.device_list.insert(END, device["name"])
 
     def select_all(self):
         # Select all visible devices
@@ -83,5 +80,5 @@ class TailscaleManager:
 
 root = Tk()
 app = TailscaleManager(root)
-root.geometry("400x300")  # Set the initial size of the window
+root.geometry("400x500")  # Set the initial size of the window
 root.mainloop()
