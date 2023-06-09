@@ -5,7 +5,6 @@ from tkinter import *
 from tkinter import messagebox
 import tkinter.scrolledtext as scrolledtext
 
-
 class TailscaleAPI:
     def __init__(self):
         self.api_key = None
@@ -40,7 +39,6 @@ class TailscaleAPI:
 
 
 
-
 class GUI:
     def __init__(self, master):
         self.master = master
@@ -57,20 +55,26 @@ class GUI:
         self.login_button = Button(self.login_frame, text="Login")
         self.login_button.pack(side=LEFT, padx=(10, 0), pady=0)
 
-        # Create Search Devices and Device List frame
+        # Create Device frame to group search devices, buttons, and device lists
         self.device_frame = self.create_frame(self.container, BOTH, 10, (5, 0), True)
-        self.search_entry = self.create_entry(self.device_frame, "Search devices", None, X, 0, 0)
-        self.device_list_frame = self.create_frame(self.device_frame, BOTH, 0, 0, True)
 
-        self.device_list_scrollbar = Scrollbar(self.device_list_frame)
-        self.device_list_scrollbar.pack(side=RIGHT, fill=Y)
+        # Create a new frame for grouping search, select all and add to target buttons
+        self.device_actions_frame = self.create_frame(self.device_frame, X, 0, 0, False)
+        self.search_entry = self.create_entry(self.device_actions_frame, "Search devices", LEFT, X, 0, 0)
+        self.select_all_visible_button = Button(self.device_actions_frame, text="Select All Visible Devices")
+        self.select_all_visible_button.pack(side=LEFT, padx=(10, 0), pady=0)
+        self.add_to_target_button = Button(self.device_actions_frame, text="Add Selected to Target")
+        self.add_to_target_button.pack(side=LEFT, padx=(10, 0), pady=0)
+        self.select_all_visible_button.configure(command=self.select_all_visible_devices)
 
-        self.device_list = Listbox(self.device_list_frame, selectmode=MULTIPLE, yscrollcommand=self.device_list_scrollbar.set)
-        self.device_list.pack(fill=BOTH, expand=True)
-        self.device_list_scrollbar.config(command=self.device_list.yview)
+        # Create two separate device lists frame: available and target
+        self.device_lists_frame = self.create_frame(self.device_frame, BOTH, 0, 0, True)
+        self.available_device_list_frame = self.create_frame(self.device_lists_frame, BOTH, 0, 0, True)
+        self.target_device_list_frame = self.create_frame(self.device_lists_frame, BOTH, 0, 0, True)
 
-        self.device_list.bind('<<ListboxSelect>>', self.on_select)
-        self.selected_devices = set()  # Store the current selection here.
+        # Create two separate device lists: available and target
+        self.available_device_list = self.create_device_list(self.available_device_list_frame)
+        self.target_device_list = self.create_device_list(self.target_device_list_frame)
 
         # Create Tag Entry, Apply Tags, and Show Logs frame
         self.tag_frame = self.create_frame(self.container, X, 10, (5, 0))
@@ -112,6 +116,26 @@ class GUI:
         for index in removed:
             print(f"{self.device_list.get(index)} device deselected")
 
+    # Prevent selection/deselection when clicking on whitespace.
+    def on_mouse_click(self, event):
+        index = self.device_list.nearest(event.y)
+        if "empty" in self.device_list.itemcget(index, "style"):
+            # Ignore clicks on empty items
+            return "break"
+
+    def create_device_list(self, master):
+        scrollbar = Scrollbar(master)
+        scrollbar.pack(side=RIGHT, fill=Y)
+
+        listbox = Listbox(master, selectmode=MULTIPLE, yscrollcommand=scrollbar.set)
+        listbox.pack(fill=BOTH, expand=True)
+        scrollbar.config(command=listbox.yview)
+
+        return listbox
+
+    def select_all_visible_devices(self):
+        self.available_device_list.select_set(0, END)
+
 
 
 class TailscaleManager:
@@ -123,7 +147,10 @@ class TailscaleManager:
         self.gui.search_entry.bind('<KeyRelease>', self.update_device_list)
         self.gui.apply_tags_button.configure(command=self.apply_tags)
         self.gui.show_logs_button.configure(command=self.toggle_logs)
-        self.gui.device_list.bind('<<ListboxSelect>>', self.on_device_select)
+        self.gui.available_device_list.bind('<<ListboxSelect>>', self.on_device_select)
+        self.gui.target_device_list.bind('<<ListboxSelect>>', self.on_device_select)
+        self.gui.select_all_visible_button.configure(command=self.select_all_visible)
+        self.gui.add_to_target_button.configure(command=self.add_to_target)
 
         self.logger = logging.getLogger("console_logger")
         self.logger.setLevel(logging.INFO)
@@ -137,35 +164,50 @@ class TailscaleManager:
         self.master.grid_columnconfigure(0, weight=1)
 
     def login(self):
-        data = self.api.login(self.gui.api_key_entry.get(), self.gui.tailnet_entry.get())
-        self.log_message("API Response:")
-        self.log_message(json.dumps(data, indent=4))
-        self.update_device_list()
+        response = self.api.login(self.gui.api_key_entry.get(), self.gui.tailnet_entry.get())
+        if response.status_code == 200:
+            data = response.json()
+            num_devices = len(data.get('devices', []))
+            self.log_message(f"Added {num_devices} device(s) to list")
+            self.update_device_list()
+        else:
+            self.log_message("API Response:")
+            self.log_message(json.dumps(response.json(), indent=4))
 
     def update_device_list(self, event=None):
         search_term = self.gui.search_entry.get().lower()
         self.gui.device_list.delete(0, END)
+        if search_term != "search devices":
+            self.log_message("Search performed, clearing current selection")
         for device in self.api.devices:
             if search_term in device["name"].lower() or search_term == "search devices":
                 self.gui.device_list.insert(END, device["name"])
 
     def on_device_select(self, event):
-        selected_indices = self.gui.device_list.curselection()
-        self.log_message(f"Adding {len(selected_indices)} device(s) into list")
+        # Handle the event for selecting device from available_device_list and target_device_list
+        selected_indices = event.gui.available_device_list.curselection()
+        self.log_message(f"Selected {len(selected_indices)} device(s) from available list")
+
+    def on_target_device_select(self, event):
+        # Handle the event for selecting device from target_device_list
+        selected_indices = self.gui.target_device_list.curselection()
+        self.log_message(f"Selected {len(selected_indices)} device(s) from target list")
+
+    def select_all_visible(self):
+        self.gui.available_device_list.select_set(0, END)
+        self.log_message("All visible devices have been selected.")
+
+    def add_to_target(self):
+        selected_indices = self.gui.available_device_list.curselection()
+        for index in selected_indices:
+            self.gui.target_device_list.insert(END, self.gui.available_device_list.get(index))
+        self.log_message(f"Moved {len(selected_indices)} device(s) to target list")
+
+
 
     def apply_tags(self):
-        selected_devices = [self.api.devices[i] for i in self.gui.device_list.curselection()]
+        selected_devices = [self.api.devices[i] for i in self.gui.target_device_list.curselection()]
         selected_tags = ['tag:'+tag.strip() for tag in self.gui.tag_entry.get().split(",")]
-        for device in selected_devices:
-            device_id = device["nodeId"]
-            response = self.api.apply_tags(device_id, selected_tags)
-            if response.status_code == 200:
-                self.log_message(f"Tags updated for device {device['name']}")
-            else:
-                error_message = f"Failed to update tags for device {device['name']}. Status code: {response.status_code}, Response: {response.json()}"
-                self.log_message(error_message)
-                messagebox.showerror("Error", error_message)
-                
         # Prompt to show which tags will be applied to which devices.
         tag_text = ', '.join(selected_tags)
         device_text = ', '.join(device['name'] for device in selected_devices)
@@ -173,6 +215,15 @@ class TailscaleManager:
         prompt_result = messagebox.askokcancel("Confirmation", prompt_text)
         if prompt_result:
             self.log_message("Applying tags...")
+            for device in selected_devices:
+                device_id = device["nodeId"]
+                response = self.api.apply_tags(device_id, selected_tags)
+                if response.status_code == 200:
+                    self.log_message(f"Tags updated for device {device['name']}")
+                else:
+                    error_message = f"Failed to update tags for device {device['name']}. Status code: {response.status_code}, Response: {response.json()}"
+                    self.log_message(error_message)
+                    messagebox.showerror("Error", error_message)
         else:
             self.log_message("Tag application cancelled.")
 
